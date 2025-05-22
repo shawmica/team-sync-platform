@@ -1,6 +1,6 @@
 
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -27,11 +27,27 @@ const navItems = [
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
   };
+
+  // Handle creating a new task when the button is clicked in Index.tsx
+  const handleCreateTask = () => {
+    navigate("/tasks/new");
+  };
+
+  // Expose the handler to the window object so it can be called from other components
+  useEffect(() => {
+    window.handleCreateTask = handleCreateTask;
+    
+    return () => {
+      // Clean up when component unmounts
+      delete window.handleCreateTask;
+    };
+  }, []);
 
   return (
     <>
@@ -61,7 +77,8 @@ export function Sidebar() {
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = location.pathname === item.path || 
+                              (item.path !== "/" && location.pathname.startsWith(item.path));
               const Icon = item.icon;
               
               return (

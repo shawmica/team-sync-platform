@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 // Mock data with correct type constraints
 const recentTasks = [
@@ -145,6 +146,7 @@ const activeProjects = [
 
 export default function Index() {
   const [taskView, setTaskView] = useState("all");
+  const navigate = useNavigate();
   
   return (
     <Layout>
@@ -153,7 +155,7 @@ export default function Index() {
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, here's an overview of your organization.</p>
         </div>
-        <Button>
+        <Button onClick={() => navigate("/tasks/new")}>
           <Plus className="mr-2 h-4 w-4" /> Create Task
         </Button>
       </div>
@@ -194,10 +196,8 @@ export default function Index() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">Recent Tasks</h2>
-          <Button variant="link" className="text-sm text-muted-foreground" asChild>
-            <a href="/tasks">
-              View all <ChevronRight className="ml-1 h-4 w-4" />
-            </a>
+          <Button variant="link" className="text-sm text-muted-foreground" onClick={() => navigate("/tasks")}>
+            View all <ChevronRight className="ml-1 h-4 w-4" />
           </Button>
         </div>
         
@@ -213,35 +213,55 @@ export default function Index() {
           <TabsContent value="all" className="mt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {recentTasks.map((task) => (
-                <TaskCard key={task.id} {...task} />
+                <TaskCard 
+                  key={task.id} 
+                  {...task} 
+                  onClick={() => navigate(`/tasks/${task.id}`)}
+                />
               ))}
             </div>
           </TabsContent>
           <TabsContent value="my" className="mt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {recentTasks.slice(0, 2).map((task) => (
-                <TaskCard key={task.id} {...task} />
+                <TaskCard 
+                  key={task.id} 
+                  {...task} 
+                  onClick={() => navigate(`/tasks/${task.id}`)}
+                />
               ))}
             </div>
           </TabsContent>
           <TabsContent value="todo" className="mt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {recentTasks.filter(task => task.status === 'todo').map((task) => (
-                <TaskCard key={task.id} {...task} />
+                <TaskCard 
+                  key={task.id} 
+                  {...task} 
+                  onClick={() => navigate(`/tasks/${task.id}`)}
+                />
               ))}
             </div>
           </TabsContent>
           <TabsContent value="in-progress" className="mt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {recentTasks.filter(task => task.status === 'in-progress').map((task) => (
-                <TaskCard key={task.id} {...task} />
+                <TaskCard 
+                  key={task.id} 
+                  {...task} 
+                  onClick={() => navigate(`/tasks/${task.id}`)}
+                />
               ))}
             </div>
           </TabsContent>
           <TabsContent value="review" className="mt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               {recentTasks.filter(task => task.status === 'review').map((task) => (
-                <TaskCard key={task.id} {...task} />
+                <TaskCard 
+                  key={task.id} 
+                  {...task} 
+                  onClick={() => navigate(`/tasks/${task.id}`)}
+                />
               ))}
             </div>
           </TabsContent>
@@ -254,10 +274,8 @@ export default function Index() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold">Active Projects</h2>
-            <Button variant="link" className="text-sm text-muted-foreground" asChild>
-              <a href="/projects">
-                View all <ChevronRight className="ml-1 h-4 w-4" />
-              </a>
+            <Button variant="link" className="text-sm text-muted-foreground" onClick={() => navigate("/projects")}>
+              View all <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
           <div className="space-y-4">
@@ -271,10 +289,8 @@ export default function Index() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold">Top Performing Employees</h2>
-            <Button variant="link" className="text-sm text-muted-foreground" asChild>
-              <a href="/employees">
-                View all <ChevronRight className="ml-1 h-4 w-4" />
-              </a>
+            <Button variant="link" className="text-sm text-muted-foreground" onClick={() => navigate("/employees")}>
+              View all <ChevronRight className="ml-1 h-4 w-4" />
             </Button>
           </div>
           <div className="space-y-4">
@@ -287,4 +303,3 @@ export default function Index() {
     </Layout>
   );
 }
-
