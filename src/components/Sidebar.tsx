@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -34,20 +34,10 @@ export function Sidebar() {
     setIsOpen(!isOpen);
   };
 
-  // Handle creating a new task when the button is clicked in Index.tsx
+  // Handle creating a new task when the button is clicked
   const handleCreateTask = () => {
     navigate("/tasks/new");
   };
-
-  // Expose the handler to the window object so it can be called from other components
-  useEffect(() => {
-    window.handleCreateTask = handleCreateTask;
-    
-    return () => {
-      // Clean up when component unmounts
-      delete window.handleCreateTask;
-    };
-  }, []);
 
   return (
     <>

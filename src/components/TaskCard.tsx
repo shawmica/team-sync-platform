@@ -18,6 +18,7 @@ interface TaskCardProps {
     initials: string;
   };
   projectName?: string;
+  onClick?: () => void;
 }
 
 export function TaskCard({
@@ -28,6 +29,7 @@ export function TaskCard({
   dueDate,
   assignee,
   projectName,
+  onClick,
 }: TaskCardProps) {
   const priorityColors = {
     low: "bg-green-100 text-green-800 hover:bg-green-200",
@@ -43,7 +45,7 @@ export function TaskCard({
   };
 
   return (
-    <Card className="overflow-hidden transition-shadow hover:shadow-md">
+    <Card className="overflow-hidden transition-shadow hover:shadow-md cursor-pointer" onClick={onClick}>
       <CardContent className="p-4">
         <div className="flex justify-between mb-2">
           <Badge variant="outline" className={cn(priorityColors[priority])}>
