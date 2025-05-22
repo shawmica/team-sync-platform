@@ -10,64 +10,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { CheckSquare, ArrowLeft, Calendar, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-// Mock data
-const taskData = {
-  "1": {
-    id: "1",
-    title: "Update user authentication system",
-    description: "Implement new security measures in the login system including two-factor authentication and passwordless login options. Review and update the current password policies.",
-    priority: "high" as const,
-    status: "in-progress" as const,
-    dueDate: "2025-05-28",
-    assignee: {
-      id: "user1",
-      name: "Sarah Johnson",
-      initials: "SJ",
-    },
-    projectName: "System Security",
-    comments: [
-      {
-        id: "comment1",
-        author: "Michael Roberts",
-        authorInitials: "MR",
-        content: "Have you considered using JWT tokens for this implementation?",
-        createdAt: "2025-05-20T14:30:00",
-      },
-      {
-        id: "comment2",
-        author: "Sarah Johnson",
-        authorInitials: "SJ",
-        content: "Yes, already looking into that approach. Will update once I have a prototype.",
-        createdAt: "2025-05-20T15:45:00",
-      }
-    ],
-    attachments: [
-      {
-        id: "attach1",
-        name: "security_requirements.pdf",
-        size: "1.2 MB",
-        uploadedAt: "2025-05-19T10:15:00",
-      }
-    ]
-  },
-  "2": {
-    id: "2",
-    title: "Create new dashboard wireframes",
-    description: "Design mockups for the analytics dashboard with a focus on data visualization and user experience.",
-    priority: "medium" as const,
-    status: "todo" as const,
-    dueDate: "2025-05-30",
-    assignee: {
-      id: "user2",
-      name: "Alex Chen",
-      initials: "AC",
-    },
-    projectName: "Dashboard Redesign",
-    comments: [],
-    attachments: []
-  }
-};
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 interface TaskDetailProps {
   isNew?: boolean;
@@ -76,37 +21,126 @@ interface TaskDetailProps {
 export default function TaskDetail({ isNew = false }: TaskDetailProps) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [newComment, setNewComment] = useState("");
   
   // For new task or editing existing task
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
-  const [taskStatus, setTaskStatus] = useState<"todo" | "in-progress" | "review" | "completed">("todo");
+  const [taskStatus, setTaskStatus] = useState<"todo" | "in-progress" | "review" | "done">("todo");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<{id: string, name: string}[]>([]);
   
+  // Fetch projects
   useEffect(() => {
-    if (!isNew && id && taskData[id]) {
-      const task = taskData[id];
-      setTaskTitle(task.title);
-      setTaskDescription(task.description);
-      setTaskPriority(task.priority);
-      setTaskStatus(task.status);
-      setTaskDueDate(task.dueDate);
-    }
-  }, [id, isNew]);
-  
-  const handleSave = () => {
-    // In a real app, this would save to the database
-    console.log("Saving task:", {
-      title: taskTitle,
-      description: taskDescription,
-      priority: taskPriority,
-      status: taskStatus,
-      dueDate: taskDueDate,
-    });
+    const fetchProjects = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('id, name');
+          
+        if (error) throw error;
+        
+        if (data) setProjects(data);
+      } catch (error: any) {
+        toast({
+          title: "Error fetching projects",
+          description: error.message,
+          variant: "destructive"
+        });
+      }
+    };
     
-    navigate("/tasks");
+    fetchProjects();
+  }, []);
+  
+  // Fetch task data if not a new task
+  useEffect(() => {
+    if (!isNew && id) {
+      const fetchTask = async () => {
+        try {
+          setLoading(true);
+          const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .eq('id', id)
+            .single();
+            
+          if (error) throw error;
+          
+          if (data) {
+            setTaskTitle(data.title);
+            setTaskDescription(data.description || "");
+            setTaskPriority(data.priority as "low" | "medium" | "high");
+            setTaskStatus(data.status as "todo" | "in-progress" | "review" | "done");
+            setTaskDueDate(data.due_date ? new Date(data.due_date).toISOString().split('T')[0] : "");
+            setProjectId(data.project_id || null);
+          }
+        } catch (error: any) {
+          toast({
+            title: "Error fetching task",
+            description: error.message,
+            variant: "destructive"
+          });
+          navigate('/tasks');
+        } finally {
+          setLoading(false);
+        }
+      };
+      
+      fetchTask();
+    }
+  }, [id, isNew, navigate]);
+  
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      
+      const taskData = {
+        title: taskTitle,
+        description: taskDescription,
+        priority: taskPriority,
+        status: taskStatus,
+        due_date: taskDueDate ? new Date(taskDueDate).toISOString() : null,
+        project_id: projectId,
+        user_id: user?.id,
+      };
+      
+      let response;
+      
+      if (isNew) {
+        response = await supabase
+          .from('tasks')
+          .insert([taskData])
+          .select();
+      } else {
+        response = await supabase
+          .from('tasks')
+          .update(taskData)
+          .eq('id', id)
+          .select();
+      }
+      
+      if (response.error) throw response.error;
+      
+      toast({
+        title: "Success",
+        description: isNew ? "Task created successfully" : "Task updated successfully",
+      });
+      
+      navigate('/tasks');
+    } catch (error: any) {
+      toast({
+        title: "Error saving task",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderPriorityBadge = (priority: "low" | "medium" | "high") => {
@@ -123,19 +157,19 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     );
   };
 
-  const renderStatusBadge = (status: "todo" | "in-progress" | "review" | "completed") => {
+  const renderStatusBadge = (status: "todo" | "in-progress" | "review" | "done") => {
     const classes = {
       todo: "bg-gray-100 text-gray-800",
       "in-progress": "bg-blue-100 text-blue-800",
       review: "bg-purple-100 text-purple-800",
-      completed: "bg-green-100 text-green-800",
+      done: "bg-green-100 text-green-800",
     };
     
     const labels = {
       todo: "To Do",
       "in-progress": "In Progress",
       review: "In Review",
-      completed: "Completed",
+      done: "Completed",
     };
     
     return (
@@ -144,6 +178,16 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
       </Badge>
     );
   };
+
+  if (loading && !isNew) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center h-[80vh]">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -166,6 +210,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     value={taskTitle} 
                     onChange={(e) => setTaskTitle(e.target.value)} 
                     placeholder="Enter task title"
+                    disabled={loading}
                   />
                 </div>
                 
@@ -177,6 +222,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     onChange={(e) => setTaskDescription(e.target.value)}
                     placeholder="Enter task description" 
                     rows={5}
+                    disabled={loading}
                   />
                 </div>
                 
@@ -186,6 +232,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     <Select 
                       value={taskPriority} 
                       onValueChange={(value) => setTaskPriority(value as "low" | "medium" | "high")}
+                      disabled={loading}
                     >
                       <SelectTrigger id="priority">
                         <SelectValue placeholder="Select priority" />
@@ -202,7 +249,8 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     <Label htmlFor="status">Status</Label>
                     <Select 
                       value={taskStatus} 
-                      onValueChange={(value) => setTaskStatus(value as "todo" | "in-progress" | "review" | "completed")}
+                      onValueChange={(value) => setTaskStatus(value as "todo" | "in-progress" | "review" | "done")}
+                      disabled={loading}
                     >
                       <SelectTrigger id="status">
                         <SelectValue placeholder="Select status" />
@@ -211,7 +259,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                         <SelectItem value="todo">To Do</SelectItem>
                         <SelectItem value="in-progress">In Progress</SelectItem>
                         <SelectItem value="review">In Review</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="done">Completed</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -226,16 +274,36 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                         className="pl-10" 
                         value={taskDueDate} 
                         onChange={(e) => setTaskDueDate(e.target.value)}
+                        disabled={loading}
                       />
                     </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="project">Project</Label>
+                    <Select 
+                      value={projectId || ""} 
+                      onValueChange={(value) => setProjectId(value || null)}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id="project">
+                        <SelectValue placeholder="Select project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {projects.map(project => (
+                          <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 
                 <div className="pt-4 flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => navigate("/tasks")}>
+                  <Button variant="outline" onClick={() => navigate("/tasks")} disabled={loading}>
                     Cancel
                   </Button>
-                  <Button onClick={handleSave}>
+                  <Button onClick={handleSave} disabled={loading || !taskTitle.trim()}>
                     <CheckSquare className="mr-2 h-4 w-4" />
                     {isNew ? "Create Task" : "Save Changes"}
                   </Button>
@@ -243,121 +311,42 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
               </div>
             </CardContent>
           </Card>
-          
-          {!isNew && id && taskData[id]?.comments && (
-            <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Comments</h2>
-                <div className="space-y-4">
-                  {taskData[id].comments.map((comment) => (
-                    <div key={comment.id} className="border rounded-md p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="text-xs font-medium">{comment.authorInitials}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium">{comment.author}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(comment.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-sm">{comment.content}</p>
-                    </div>
-                  ))}
-                  
-                  <div className="pt-4">
-                    <Textarea 
-                      placeholder="Add a comment..." 
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                    />
-                    <div className="mt-2 flex justify-end">
-                      <Button size="sm" disabled={!newComment.trim()}>
-                        Add Comment
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
         
         <div className="lg:col-span-1 space-y-6">
-          {!isNew && id && taskData[id] && (
-            <>
-              <Card>
-                <CardContent className="pt-6">
-                  <h2 className="text-lg font-semibold mb-4">Task Info</h2>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Priority:</span>
-                      <span>{renderPriorityBadge(taskData[id].priority)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-muted-foreground">Status:</span>
-                      <span>{renderStatusBadge(taskData[id].status)}</span>
-                    </div>
+          {!isNew && (
+            <Card>
+              <CardContent className="pt-6">
+                <h2 className="text-lg font-semibold mb-4">Task Info</h2>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Priority:</span>
+                    <span>{renderPriorityBadge(taskPriority)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Status:</span>
+                    <span>{renderStatusBadge(taskStatus)}</span>
+                  </div>
+                  {taskDueDate && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Due Date:</span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {new Date(taskData[id].dueDate).toLocaleDateString()}
+                        {new Date(taskDueDate).toLocaleDateString()}
                       </span>
                     </div>
+                  )}
+                  {projectId && (
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Project:</span>
-                      <span className="font-medium">{taskData[id].projectName}</span>
+                      <span className="font-medium">
+                        {projects.find(p => p.id === projectId)?.name || 'Unknown Project'}
+                      </span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="pt-6">
-                  <h2 className="text-lg font-semibold mb-4">Assigned To</h2>
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="font-medium">{taskData[id].assignee.initials}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium">{taskData[id].assignee.name}</p>
-                      <Button variant="link" className="h-auto p-0 text-sm">Change</Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {taskData[id].attachments.length > 0 && (
-                <Card>
-                  <CardContent className="pt-6">
-                    <h2 className="text-lg font-semibold mb-4">Attachments</h2>
-                    <div className="space-y-2">
-                      {taskData[id].attachments.map(attachment => (
-                        <div 
-                          key={attachment.id} 
-                          className="flex items-center justify-between p-2 border rounded-md"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 bg-muted rounded-md flex items-center justify-center">
-                              <span className="text-xs">PDF</span>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{attachment.name}</p>
-                              <p className="text-xs text-muted-foreground">{attachment.size}</p>
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm">
-                            Download
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
