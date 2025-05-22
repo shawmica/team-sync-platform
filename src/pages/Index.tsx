@@ -16,14 +16,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 
-// Mock data
+// Mock data with correct type constraints
 const recentTasks = [
   {
     id: "1",
     title: "Update user authentication system",
     description: "Implement new security measures in the login system",
-    priority: "high",
-    status: "in-progress",
+    priority: "high" as const,
+    status: "in-progress" as const,
     dueDate: "May 28",
     assignee: {
       name: "Sarah Johnson",
@@ -35,8 +35,8 @@ const recentTasks = [
     id: "2",
     title: "Create new dashboard wireframes",
     description: "Design mockups for the analytics dashboard",
-    priority: "medium",
-    status: "todo",
+    priority: "medium" as const,
+    status: "todo" as const,
     dueDate: "May 30",
     assignee: {
       name: "Alex Chen",
@@ -48,8 +48,8 @@ const recentTasks = [
     id: "3",
     title: "Prepare quarterly report",
     description: "Compile Q2 data for management review",
-    priority: "high",
-    status: "review",
+    priority: "high" as const,
+    status: "review" as const,
     dueDate: "May 25",
     assignee: {
       name: "Michael Roberts",
@@ -61,8 +61,8 @@ const recentTasks = [
     id: "4",
     title: "Fix checkout page bug",
     description: "Address issue with payment processing on mobile",
-    priority: "medium",
-    status: "in-progress",
+    priority: "medium" as const,
+    status: "in-progress" as const,
     dueDate: "May 26",
     assignee: {
       name: "Jessica Wong",
@@ -81,7 +81,7 @@ const topEmployees = [
     email: "emily.davis@example.com",
     taskCount: 8,
     skills: ["React", "Node.js", "TypeScript"],
-    availability: "available",
+    availability: "available" as const,
   },
   {
     id: "2",
@@ -91,7 +91,7 @@ const topEmployees = [
     email: "daniel.wilson@example.com",
     taskCount: 5,
     skills: ["Figma", "UI Design", "Prototyping"],
-    availability: "busy",
+    availability: "busy" as const,
   },
   {
     id: "3",
@@ -101,7 +101,7 @@ const topEmployees = [
     email: "sophia.martinez@example.com",
     taskCount: 12,
     skills: ["Agile", "Team Leadership", "Jira"],
-    availability: "available",
+    availability: "available" as const,
   },
 ];
 
@@ -111,7 +111,7 @@ const activeProjects = [
     name: "Website Redesign",
     description: "Revamping the company website with modern design and improved UX",
     progress: 65,
-    status: "active",
+    status: "active" as const,
     dueDate: "Jun 15",
     teamMembers: [
       { name: "Emily Davis", initials: "ED" },
@@ -129,7 +129,7 @@ const activeProjects = [
     name: "Mobile App Development",
     description: "Creating a new customer-facing mobile application",
     progress: 40,
-    status: "active",
+    status: "active" as const,
     dueDate: "Jul 20",
     teamMembers: [
       { name: "Michael Roberts", initials: "MR" },
@@ -287,3 +287,4 @@ export default function Index() {
     </Layout>
   );
 }
+
