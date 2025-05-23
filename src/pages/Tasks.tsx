@@ -4,73 +4,80 @@ import { TaskCard } from "@/components/TaskCard";
 import { Button } from "@/components/ui/button";
 import { Plus, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/components/ui/sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/context/AuthContext";
 
-// Mock data with correct type constraints
-const tasks = [
-  {
-    id: "1",
-    title: "Update user authentication system",
-    description: "Implement new security measures in the login system",
-    priority: "high" as const,
-    status: "in-progress" as const,
-    dueDate: "May 28",
-    assignee: {
-      name: "Sarah Johnson",
-      initials: "SJ",
-    },
-    projectName: "System Security",
-  },
-  {
-    id: "2",
-    title: "Create new dashboard wireframes",
-    description: "Design mockups for the analytics dashboard",
-    priority: "medium" as const,
-    status: "todo" as const,
-    dueDate: "May 30",
-    assignee: {
-      name: "Alex Chen",
-      initials: "AC",
-    },
-    projectName: "Dashboard Redesign",
-  },
-  {
-    id: "3",
-    title: "Prepare quarterly report",
-    description: "Compile Q2 data for management review",
-    priority: "high" as const,
-    status: "review" as const,
-    dueDate: "May 25",
-    assignee: {
-      name: "Michael Roberts",
-      initials: "MR",
-    },
-    projectName: "Quarterly Reports",
-  },
-  {
-    id: "4",
-    title: "Fix checkout page bug",
-    description: "Address issue with payment processing on mobile",
-    priority: "medium" as const,
-    status: "in-progress" as const,
-    dueDate: "May 26",
-    assignee: {
-      name: "Jessica Wong",
-      initials: "JW",
-    },
-    projectName: "E-commerce Platform",
-  },
-];
+// Define type for task data
+type Task = {
+  id: string;
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high';
+  status: 'todo' | 'in-progress' | 'review' | 'done';
+  due_date: string;
+  user_id: string;
+  project_id?: string;
+};
 
 export default function Tasks() {
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
+  const { user } = useAuth();
   
-  const filteredTasks = tasks.filter(
+  const fetchTasks = async () => {
+    if (!user) throw new Error("User not authenticated");
+    
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*, projects(name)')
+      .order('created_at', { ascending: false });
+      
+    if (error) {
+      throw error;
+    }
+    
+    return data;
+  };
+  
+  const { data: tasks, isLoading, error } = useQuery({
+    queryKey: ['tasks', user?.id],
+    queryFn: fetchTasks,
+    enabled: !!user,
+  });
+  
+  useEffect(() => {
+    if (error) {
+      toast.error("Failed to load tasks");
+      console.error("Error fetching tasks:", error);
+    }
+  }, [error]);
+
+  const filteredTasks = tasks?.filter(
     task => task.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           task.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+           task.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+  
+  // Format task data for TaskCard
+  const formatTaskForDisplay = (task: any) => {
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description || "",
+      priority: task.priority,
+      status: task.status,
+      dueDate: task.due_date ? new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '',
+      assignee: {
+        name: "Unassigned",
+        initials: "U",
+      },
+      projectName: task.projects?.name,
+    };
+  };
 
   return (
     <Layout>
@@ -96,15 +103,36 @@ export default function Tasks() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-        {filteredTasks.map((task) => (
-          <TaskCard 
-            key={task.id} 
-            {...task} 
-            onClick={() => navigate(`/tasks/${task.id}`)}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {[1,2,3,4].map((i) => (
+            <div key={i} className="rounded-lg border p-4">
+              <Skeleton className="h-4 w-20 mb-2" />
+              <Skeleton className="h-6 w-full mb-4" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {filteredTasks.length > 0 ? (
+            filteredTasks.map((task) => (
+              <TaskCard 
+                key={task.id} 
+                {...formatTaskForDisplay(task)} 
+                onClick={() => navigate(`/tasks/${task.id}`)}
+              />
+            ))
+          ) : (
+            <div className="col-span-full text-center py-10">
+              <p className="text-muted-foreground">
+                {searchQuery ? "No tasks found matching your search." : "No tasks yet. Click 'Create Task' to get started!"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </Layout>
   );
 }
