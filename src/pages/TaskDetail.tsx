@@ -324,14 +324,14 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                   <div className="space-y-2">
                     <Label htmlFor="project">Project</Label>
                     <Select
-                      value={projectId || ""}
-                      onValueChange={setProjectId}
+                      value={projectId || "none"}
+                      onValueChange={(value) => setProjectId(value === "none" ? null : value)}
                     >
                       <SelectTrigger id="project">
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                         {projects?.map((project) => (
                           <SelectItem key={project.id} value={project.id}>
                             {project.name}
