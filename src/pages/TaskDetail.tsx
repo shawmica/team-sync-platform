@@ -1,253 +1,237 @@
-
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { CalendarDays, CheckCheck, ChevronsLeft, Edit, Loader2, XCircle } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "@/components/ui/sonner";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { CheckSquare, ArrowLeft, Calendar, Clock, Trash } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import { toast } from "@/components/ui/sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { format, parseISO } from 'date-fns';
 
-interface TaskDetailProps {
-  isNew?: boolean;
-}
-
-// Define task types for better type safety
-type TaskPriority = "low" | "medium" | "high";
-type TaskStatus = "todo" | "in-progress" | "review" | "done";
-
-// Update the interface to properly handle the potential error state
-interface TaskData {
-  id?: string;
+// Define the Task type
+type Task = {
+  id: string;
   title: string;
   description: string | null;
-  priority: TaskPriority;
-  status: TaskStatus;
+  priority: "low" | "medium" | "high";
+  status: "todo" | "in-progress" | "review" | "done";
   due_date: string | null;
-  project_id: string | null;
   user_id: string | null;
+  created_at?: string;
+  updated_at?: string;
   projects?: {
+    id: string;
     name: string;
-  } | null | { error: true };
-}
+  } | null;
+};
 
-export default function TaskDetail({ isNew = false }: TaskDetailProps) {
-  const { id } = useParams();
+// Define the TaskFormValues type
+const taskFormSchema = z.object({
+  title: z.string().min(3, { message: "Title must be at least 3 characters." }),
+  description: z.string().optional(),
+  priority: z.enum(["low", "medium", "high"]),
+  status: z.enum(["todo", "in-progress", "review", "done"]),
+  due_date: z.string().optional(),
+  project_id: z.string().optional(),
+});
+
+type TaskFormValues = z.infer<typeof taskFormSchema>;
+
+export default function TaskDetail({ isNew = false }: { isNew?: boolean }) {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  
-  // State for task form with proper typing
-  const [taskTitle, setTaskTitle] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
-  const [taskPriority, setTaskPriority] = useState<TaskPriority>("medium");
-  const [taskStatus, setTaskStatus] = useState<TaskStatus>("todo");
-  const [taskDueDate, setTaskDueDate] = useState("");
-  const [projectId, setProjectId] = useState<string | null>(null);
-  
-  // Fetch projects for dropdown
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, name');
-        
-      if (error) throw error;
-      return data;
-    }
-  });
-  
-  // Fetch task details
-  const { data: task, isLoading } = useQuery({
-    queryKey: ['task', id],
-    queryFn: async () => {
-      if (isNew || !id) return null;
-      
-      // Fetch task without joining projects
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (taskError) throw taskError;
-      
-      // If task has a project_id, fetch the project details separately
-      let projectData = null;
-      if (taskData.project_id) {
-        const { data: projectInfo, error: projectError } = await supabase
-          .from('projects')
-          .select('name')
-          .eq('id', taskData.project_id)
-          .single();
-          
-        if (!projectError && projectInfo) {
-          projectData = projectInfo;
-        }
-      }
-      
-      // Combine task data with project data
-      return {
-        ...taskData,
-        projects: projectData
-      } as TaskData;
+  const { user } = useAuth();
+  const [isEditMode, setIsEditMode] = useState(isNew);
+
+  const form = useForm<TaskFormValues>({
+    resolver: zodResolver(taskFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      priority: "medium",
+      status: "todo",
+      due_date: "",
+      project_id: "",
     },
-    enabled: !isNew && !!id,
+    mode: "onChange",
   });
 
-  // Update form with fetched task data
+  const { data: task, isLoading, isError } = useQuery<Task>({
+    queryKey: ["task", id],
+    queryFn: async () => {
+      if (!id) throw new Error("Task ID is required");
+
+      const { data, error } = await supabase
+        .from("tasks")
+        .select(`
+          *,
+          projects (
+            id,
+            name
+          )
+        `)
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        toast.error("Failed to load task");
+        throw error;
+      }
+
+      return data as Task;
+    },
+    enabled: !isNew && !!id && !!user,
+    retry: false,
+  });
+
   useEffect(() => {
     if (task) {
-      setTaskTitle(task.title);
-      setTaskDescription(task.description || "");
-      setTaskPriority(task.priority as TaskPriority);
-      setTaskStatus(task.status as TaskStatus);
-      setTaskDueDate(task.due_date ? format(parseISO(task.due_date), 'yyyy-MM-dd') : "");
-      setProjectId(task.project_id);
+      form.reset({
+        title: task.title,
+        description: task.description || "",
+        priority: task.priority,
+        status: task.status,
+        due_date: task.due_date || "",
+        project_id: task.projects?.id || "",
+      });
     }
-  }, [task]);
+  }, [task, form]);
 
-  // Create/update task mutation
-  const mutation = useMutation({
-    mutationFn: async (taskData: any) => {
-      if (isNew) {
-        const { data, error } = await supabase
-          .from('tasks')
-          .insert([taskData])
-          .select();
-          
-        if (error) throw error;
-        return data[0];
-      } else {
-        const { data, error } = await supabase
-          .from('tasks')
-          .update(taskData)
-          .eq('id', id)
-          .select();
-          
-        if (error) throw error;
-        return data[0];
-      }
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['task', id] });
-      toast.success(isNew ? "Task created successfully" : "Task updated successfully");
-      if (isNew) navigate(`/tasks/${data.id}`);
-    },
-    onError: (error) => {
-      toast.error(`Failed to ${isNew ? 'create' : 'update'} task: ${error.message}`);
-    }
-  });
-
-  // Delete task mutation
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!id) throw new Error('Task ID is required');
-      
+  const createTaskMutation = useMutation({
+    mutationFn: async (data: TaskFormValues) => {
       const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', id);
-        
-      if (error) throw error;
+        .from("tasks")
+        .insert({
+          ...data,
+          user_id: user?.id,
+        });
+
+      if (error) {
+        toast.error("Failed to create task");
+        throw error;
+      }
+
+      return data;
     },
     onSuccess: () => {
-      toast.success("Task deleted successfully");
-      navigate('/tasks');
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Task created successfully");
+      navigate("/tasks");
     },
     onError: (error) => {
-      toast.error(`Failed to delete task: ${error.message}`);
-    }
+      console.error("Error creating task:", error);
+      toast.error("Failed to create task");
+    },
   });
 
-  const handleSave = () => {
-    if (!taskTitle.trim()) {
-      toast.error("Title is required");
+  const updateTaskMutation = useMutation({
+    mutationFn: async (data: TaskFormValues) => {
+      if (!id) throw new Error("Task ID is required");
+
+      const { error } = await supabase
+        .from("tasks")
+        .update(data)
+        .eq("id", id);
+
+      if (error) {
+        toast.error("Failed to update task");
+        throw error;
+      }
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task", id] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Task updated successfully");
+      setIsEditMode(false);
+    },
+    onError: (error) => {
+      console.error("Error updating task:", error);
+      toast.error("Failed to update task");
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error("Task ID is required");
+
+      const { error } = await supabase
+        .from("tasks")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        toast.error("Failed to delete task");
+        throw error;
+      }
+
       return;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("Task deleted successfully");
+      navigate("/tasks");
+    },
+    onError: (error) => {
+      console.error("Error deleting task:", error);
+      toast.error("Failed to delete task");
+    },
+  });
+
+  const onSubmit = async (data: TaskFormValues) => {
+    if (isNew) {
+      createTaskMutation.mutate(data);
+    } else {
+      updateTaskMutation.mutate(data);
     }
-    
-    const taskData = {
-      title: taskTitle,
-      description: taskDescription,
-      priority: taskPriority,
-      status: taskStatus,
-      due_date: taskDueDate || null,
-      project_id: projectId,
-      user_id: user?.id,
-    };
-    
-    mutation.mutate(taskData);
   };
 
-  const handleDelete = () => {
-    deleteMutation.mutate();
-    setShowDeleteDialog(false);
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    if (task) {
+      form.reset({
+        title: task.title,
+        description: task.description || "",
+        priority: task.priority,
+        status: task.status,
+        due_date: task.due_date || "",
+        project_id: task.projects?.id || "",
+      });
+    }
   };
 
-  const renderPriorityBadge = (priority: TaskPriority) => {
-    const classes = {
-      low: "bg-blue-100 text-blue-800",
-      medium: "bg-yellow-100 text-yellow-800",
-      high: "bg-red-100 text-red-800",
-    };
-    
-    return (
-      <Badge className={classes[priority]}>
-        {priority.charAt(0).toUpperCase() + priority.slice(1)}
-      </Badge>
-    );
-  };
+  const [isDeleteConfirmationOpen, setIsDeleteConfirmationOpen] = useState(false);
 
-  const renderStatusBadge = (status: TaskStatus) => {
-    const classes = {
-      todo: "bg-gray-100 text-gray-800",
-      "in-progress": "bg-blue-100 text-blue-800",
-      review: "bg-purple-100 text-purple-800",
-      done: "bg-green-100 text-green-800",
-    };
-    
-    const labels = {
-      todo: "To Do",
-      "in-progress": "In Progress",
-      review: "In Review",
-      done: "Completed",
-    };
-    
-    return (
-      <Badge className={classes[status]}>
-        {labels[status]}
-      </Badge>
-    );
-  };
-  
-  if (isLoading && !isNew) {
+  if (isLoading) {
     return (
       <Layout>
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-1/3 bg-gray-200 rounded"></div>
-          <div className="h-32 w-full bg-gray-200 rounded"></div>
+        <div className="flex items-center justify-center h-full">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading task...
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <XCircle className="mr-2 h-4 w-4 text-red-500" />
+          Failed to load task.
         </div>
       </Layout>
     );
@@ -256,154 +240,240 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
   return (
     <Layout>
       <div className="mb-6">
-        <Button variant="ghost" className="mb-4" onClick={() => navigate("/tasks")}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Tasks
+        <Button variant="ghost" onClick={() => navigate("/tasks")}>
+          <ChevronsLeft className="mr-2 h-4 w-4" />
+          Back to Tasks
         </Button>
-        <h1 className="text-3xl font-bold">{isNew ? "Create New Task" : "Task Details"}</h1>
       </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Task Title</Label>
-                  <Input 
-                    id="title" 
-                    value={taskTitle} 
-                    onChange={(e) => setTaskTitle(e.target.value)} 
-                    placeholder="Enter task title"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea 
-                    id="description" 
-                    value={taskDescription} 
-                    onChange={(e) => setTaskDescription(e.target.value)}
-                    placeholder="Enter task description" 
-                    rows={5}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select 
-                      value={taskPriority} 
-                      onValueChange={(value: TaskPriority) => setTaskPriority(value)}
-                    >
-                      <SelectTrigger id="priority">
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select 
-                      value={taskStatus} 
-                      onValueChange={(value: TaskStatus) => setTaskStatus(value)}
-                    >
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todo">To Do</SelectItem>
-                        <SelectItem value="in-progress">In Progress</SelectItem>
-                        <SelectItem value="review">In Review</SelectItem>
-                        <SelectItem value="done">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="dueDate">Due Date</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input 
-                        id="dueDate" 
-                        type="date" 
-                        className="pl-10" 
-                        value={taskDueDate} 
-                        onChange={(e) => setTaskDueDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="project">Project</Label>
-                    <Select
-                      value={projectId || "none"}
-                      onValueChange={(value) => setProjectId(value === "none" ? null : value)}
-                    >
-                      <SelectTrigger id="project">
-                        <SelectValue placeholder="Select project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {projects?.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                <div className="pt-4 flex justify-between space-x-2">
-                  {!isNew && (
-                    <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-                      <Trash className="mr-2 h-4 w-4" />
-                      Delete Task
-                    </Button>
-                  )}
-                  <div className="flex gap-2 ml-auto">
-                    <Button variant="outline" onClick={() => navigate("/tasks")}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleSave} disabled={mutation.isPending}>
-                      <CheckSquare className="mr-2 h-4 w-4" />
-                      {isNew ? "Create Task" : "Save Changes"}
-                    </Button>
-                  </div>
-                </div>
+
+      {isDeleteConfirmationOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="max-w-md p-6">
+            <CardContent>
+              <h2 className="text-lg font-semibold mb-4">Confirm Delete</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Are you sure you want to delete this task? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsDeleteConfirmationOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={() => deleteTaskMutation.mutate()}>
+                  Delete Task
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
-        
-        <div className="lg:col-span-1 space-y-6">
-          {!isNew && task && (
+      ) : null}
+
+      <div className="md:grid md:grid-cols-3 md:gap-6">
+        <div className="md:col-span-1">
+          <div className="px-4 sm:px-0">
+            <h1 className="text-3xl font-bold mb-2">{isNew ? "Create Task" : "Task Details"}</h1>
+            <p className="text-sm text-muted-foreground">
+              {isNew ? "Create a new task" : "View and manage task details"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 md:col-span-2 md:mt-0">
+          <Card>
+            <CardContent className="bg-background p-6">
+              <Form {...form}>
+                <form className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
+                  <div className="grid grid-cols-1 gap-6">
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Title</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Task title" {...field} disabled={!isEditMode} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div>
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Task description"
+                                className="resize-none"
+                                {...field}
+                                disabled={!isEditMode}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <FormField
+                        control={form.control}
+                        name="priority"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Priority</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!isEditMode}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select priority" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Status</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!isEditMode}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="todo">Todo</SelectItem>
+                                <SelectItem value="in-progress">In Progress</SelectItem>
+                                <SelectItem value="review">Review</SelectItem>
+                                <SelectItem value="done">Done</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <FormField
+                        control={form.control}
+                        name="due_date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Due Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} disabled={!isEditMode} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="project_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Project ID</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Project ID" {...field} disabled={!isEditMode} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-4">
+                    {isEditMode ? (
+                      <>
+                        <Button variant="ghost" onClick={handleCancelEdit} disabled={updateTaskMutation.isLoading}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={!form.formState.isValid || updateTaskMutation.isLoading}>
+                          {updateTaskMutation.isLoading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            "Save Task"
+                          )}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {!isNew && (
+                          <Button onClick={() => setIsEditMode(true)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Task
+                          </Button>
+                        )}
+                        {!isNew && (
+                          <Button variant="destructive" onClick={() => setIsDeleteConfirmationOpen(true)}>
+                            Delete Task
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {!isEditMode && task && (
+        <div className="mt-12 md:grid md:grid-cols-3 md:gap-6">
+          <div className="md:col-span-1">
+            <div className="px-4 sm:px-0">
+              <h3 className="text-lg font-medium leading-6 text-gray-900">Task Information</h3>
+              <p className="mt-1 text-sm text-gray-500">Details about the task.</p>
+            </div>
+          </div>
+          <div className="mt-5 md:col-span-2 md:mt-0">
             <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-lg font-semibold mb-4">Task Info</h2>
-                <div className="space-y-3">
+              <CardContent className="bg-background p-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Title:</span>
+                    <span className="font-medium">{task.title}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Description:</span>
+                    <span className="font-medium">{task.description || "N/A"}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Priority:</span>
-                    <span>{renderPriorityBadge(task.priority as TaskPriority)}</span>
+                    <span className="font-medium">{task.priority}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Status:</span>
-                    <span>{renderStatusBadge(task.status as TaskStatus)}</span>
+                    <span className="font-medium">{task.status}</span>
                   </div>
                   {task.due_date && (
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Due Date:</span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {format(parseISO(task.due_date), 'MMM dd, yyyy')}
-                      </span>
+                      <span className="font-medium">{new Date(task.due_date).toLocaleDateString()}</span>
                     </div>
                   )}
+
                   {task.projects && task.projects.name && (
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Project:</span>
@@ -413,26 +483,9 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                 </div>
               </CardContent>
             </Card>
-          )}
+          </div>
         </div>
-      </div>
-      
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this task. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      )}
     </Layout>
   );
 }
