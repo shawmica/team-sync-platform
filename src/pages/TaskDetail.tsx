@@ -30,6 +30,24 @@ interface TaskDetailProps {
   isNew?: boolean;
 }
 
+// Define task types for better type safety
+type TaskPriority = "low" | "medium" | "high";
+type TaskStatus = "todo" | "in-progress" | "review" | "done";
+
+interface TaskData {
+  id?: string;
+  title: string;
+  description: string | null;
+  priority: TaskPriority;
+  status: TaskStatus;
+  due_date: string | null;
+  project_id: string | null;
+  user_id: string | null;
+  projects?: {
+    name: string;
+  } | null;
+}
+
 export default function TaskDetail({ isNew = false }: TaskDetailProps) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -38,11 +56,11 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newComment, setNewComment] = useState("");
   
-  // State for task form
+  // State for task form with proper typing
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
-  const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
-  const [taskStatus, setTaskStatus] = useState<"todo" | "in-progress" | "review" | "done">("todo");
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>("medium");
+  const [taskStatus, setTaskStatus] = useState<TaskStatus>("todo");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   
@@ -75,7 +93,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
         .single();
         
       if (error) throw error;
-      return data;
+      return data as TaskData;
     },
     enabled: !isNew && !!id,
   });
@@ -85,8 +103,9 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     if (task) {
       setTaskTitle(task.title);
       setTaskDescription(task.description || "");
-      setTaskPriority(task.priority);
-      setTaskStatus(task.status);
+      // Type casting to ensure the value matches our TaskPriority type
+      setTaskPriority(task.priority as TaskPriority);
+      setTaskStatus(task.status as TaskStatus);
       setTaskDueDate(task.due_date ? format(parseISO(task.due_date), 'yyyy-MM-dd') : "");
       setProjectId(task.project_id);
     }
@@ -170,7 +189,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     setShowDeleteDialog(false);
   };
 
-  const renderPriorityBadge = (priority: "low" | "medium" | "high") => {
+  const renderPriorityBadge = (priority: TaskPriority) => {
     const classes = {
       low: "bg-blue-100 text-blue-800",
       medium: "bg-yellow-100 text-yellow-800",
@@ -184,7 +203,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     );
   };
 
-  const renderStatusBadge = (status: "todo" | "in-progress" | "review" | "done") => {
+  const renderStatusBadge = (status: TaskStatus) => {
     const classes = {
       todo: "bg-gray-100 text-gray-800",
       "in-progress": "bg-blue-100 text-blue-800",
@@ -257,7 +276,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     <Label htmlFor="priority">Priority</Label>
                     <Select 
                       value={taskPriority} 
-                      onValueChange={(value) => setTaskPriority(value as "low" | "medium" | "high")}
+                      onValueChange={(value: TaskPriority) => setTaskPriority(value)}
                     >
                       <SelectTrigger id="priority">
                         <SelectValue placeholder="Select priority" />
@@ -274,7 +293,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                     <Label htmlFor="status">Status</Label>
                     <Select 
                       value={taskStatus} 
-                      onValueChange={(value) => setTaskStatus(value as "todo" | "in-progress" | "review" | "done")}
+                      onValueChange={(value: TaskStatus) => setTaskStatus(value)}
                     >
                       <SelectTrigger id="status">
                         <SelectValue placeholder="Select status" />
@@ -353,11 +372,11 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Priority:</span>
-                    <span>{renderPriorityBadge(task.priority)}</span>
+                    <span>{renderPriorityBadge(task.priority as TaskPriority)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Status:</span>
-                    <span>{renderStatusBadge(task.status)}</span>
+                    <span>{renderStatusBadge(task.status as TaskStatus)}</span>
                   </div>
                   {task.due_date && (
                     <div className="flex justify-between items-center">
@@ -368,7 +387,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                       </span>
                     </div>
                   )}
-                  {task.projects?.name && (
+                  {task.projects && (
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Project:</span>
                       <span className="font-medium">{task.projects.name}</span>
