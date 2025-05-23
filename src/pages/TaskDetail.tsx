@@ -84,17 +84,34 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     queryFn: async () => {
       if (isNew || !id) return null;
       
-      const { data, error } = await supabase
+      // Fetch task without joining projects
+      const { data: taskData, error: taskError } = await supabase
         .from('tasks')
-        .select(`
-          *,
-          projects(name)
-        `)
+        .select('*')
         .eq('id', id)
         .single();
         
-      if (error) throw error;
-      return data as unknown as TaskData;
+      if (taskError) throw taskError;
+      
+      // If task has a project_id, fetch the project details separately
+      let projectData = null;
+      if (taskData.project_id) {
+        const { data: projectInfo, error: projectError } = await supabase
+          .from('projects')
+          .select('name')
+          .eq('id', taskData.project_id)
+          .single();
+          
+        if (!projectError && projectInfo) {
+          projectData = projectInfo;
+        }
+      }
+      
+      // Combine task data with project data
+      return {
+        ...taskData,
+        projects: projectData
+      } as TaskData;
     },
     enabled: !isNew && !!id,
   });
@@ -387,10 +404,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                       </span>
                     </div>
                   )}
-                  {/* Check if projects exists, is not null, and has a name property */}
-                  {task.projects && 
-                   !('error' in task.projects) && 
-                   task.projects.name && (
+                  {task.projects && task.projects.name && (
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Project:</span>
                       <span className="font-medium">{task.projects.name}</span>
