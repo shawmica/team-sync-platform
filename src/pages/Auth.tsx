@@ -6,24 +6,56 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Navigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { AlertCircle } from 'lucide-react';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { signIn, signUp, user, loading } = useAuth();
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Redirect if already logged in
   if (user) {
     return <Navigate to="/" />;
   }
 
+  const validateForm = () => {
+    // Reset previous errors
+    setValidationError(null);
+
+    // Basic email validation
+    if (!email || !email.includes('@') || !email.includes('.')) {
+      setValidationError('Please enter a valid email address');
+      return false;
+    }
+
+    // Basic password validation - at least 6 characters
+    if (!password || password.length < 6) {
+      setValidationError('Password must be at least 6 characters');
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLogin) {
-      await signIn(email, password);
-    } else {
-      await signUp(email, password);
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      if (isLogin) {
+        await signIn(email, password);
+      } else {
+        await signUp(email, password);
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+      setValidationError('Authentication failed. Please check your credentials.');
     }
   };
 
@@ -39,6 +71,12 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {validationError && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              <p>{validationError}</p>
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>

@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Session, User } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
-import { toast } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 
 type AuthContextType = {
   user: User | null;
@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       toast.success("Signed up successfully! Please check your email for verification.");
     } catch (error: any) {
       toast.error(error.message);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -64,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       toast.success("Logged in successfully!");
     } catch (error: any) {
       toast.error(error.message);
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -75,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       navigate('/auth');
+      toast.success("Logged out successfully");
     } catch (error: any) {
       toast.error(error.message);
     } finally {

@@ -14,15 +14,23 @@ import NotFound from "./pages/NotFound";
 import TaskDetail from "./pages/TaskDetail";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
 
 const queryClient = new QueryClient();
 
-// Protected route wrapper
+// Protected route wrapper component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('sb-ywribrqjautfxenxmzie-auth-token');
-  if (!token) {
+  const { user, loading } = useAuth();
+  
+  // Show loading or redirect while checking authentication
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
+  
+  if (!user) {
     return <Navigate to="/auth" />;
   }
+  
   return <>{children}</>;
 };
 
