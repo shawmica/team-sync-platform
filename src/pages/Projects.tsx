@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { ProjectCard } from "@/components/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -25,6 +25,8 @@ type Project = {
   progress: number;
   status: "planning" | "active" | "on-hold" | "completed";
   due_date?: string;
+  created_at?: string;
+  updated_at?: string;
   teamMembers: Array<{
     name: string;
     avatar?: string;
@@ -120,6 +122,8 @@ export default function Projects() {
             ...project,
             teamMembers,
             taskStats,
+            // Convert due_date to dueDate for ProjectCard props
+            dueDate: project.due_date
           };
         })
       );
@@ -135,8 +139,8 @@ export default function Projects() {
       project.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  async function onSubmit(data: ProjectFormValues) {
-    try {
+  const createProjectMutation = useMutation({
+    mutationFn: async (data: ProjectFormValues) => {
       // Insert the new project into Supabase
       const { data: newProject, error } = await supabase
         .from("projects")
@@ -154,6 +158,9 @@ export default function Projects() {
         throw error;
       }
 
+      return newProject;
+    },
+    onSuccess: () => {
       // Invalidate the projects query to refetch data
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Project created successfully");
@@ -161,9 +168,14 @@ export default function Projects() {
       // Close the dialog and reset form
       setIsDialogOpen(false);
       form.reset();
-    } catch (error) {
+    },
+    onError: (error) => {
       console.error("Error creating project:", error);
-    }
+    },
+  });
+
+  async function onSubmit(data: ProjectFormValues) {
+    createProjectMutation.mutate(data);
   }
 
   return (
@@ -193,7 +205,8 @@ export default function Projects() {
       <div className="space-y-4">
         {isLoading ? (
           <div className="text-center py-10">
-            <p className="text-muted-foreground">Loading projects...</p>
+            <Loader2 className="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground mt-2">Loading projects...</p>
           </div>
         ) : filteredProjects.length > 0 ? (
           filteredProjects.map((project) => (
@@ -298,7 +311,16 @@ export default function Projects() {
                 <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Create Project</Button>
+                <Button type="submit" disabled={createProjectMutation.isPending}>
+                  {createProjectMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Project"
+                  )}
+                </Button>
               </DialogFooter>
             </form>
           </Form>
