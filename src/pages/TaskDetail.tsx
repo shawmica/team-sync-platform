@@ -34,6 +34,7 @@ interface TaskDetailProps {
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "todo" | "in-progress" | "review" | "done";
 
+// Update the interface to properly handle the potential error state
 interface TaskData {
   id?: string;
   title: string;
@@ -45,7 +46,7 @@ interface TaskData {
   user_id: string | null;
   projects?: {
     name: string;
-  } | null;
+  } | null | { error: true };
 }
 
 export default function TaskDetail({ isNew = false }: TaskDetailProps) {
@@ -93,7 +94,7 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
         .single();
         
       if (error) throw error;
-      return data as TaskData;
+      return data as unknown as TaskData;
     },
     enabled: !isNew && !!id,
   });
@@ -103,7 +104,6 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
     if (task) {
       setTaskTitle(task.title);
       setTaskDescription(task.description || "");
-      // Type casting to ensure the value matches our TaskPriority type
       setTaskPriority(task.priority as TaskPriority);
       setTaskStatus(task.status as TaskStatus);
       setTaskDueDate(task.due_date ? format(parseISO(task.due_date), 'yyyy-MM-dd') : "");
@@ -387,7 +387,10 @@ export default function TaskDetail({ isNew = false }: TaskDetailProps) {
                       </span>
                     </div>
                   )}
-                  {task.projects && (
+                  {/* Check if projects exists, is not null, and has a name property */}
+                  {task.projects && 
+                   !('error' in task.projects) && 
+                   task.projects.name && (
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Project:</span>
                       <span className="font-medium">{task.projects.name}</span>
